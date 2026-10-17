@@ -16,7 +16,12 @@
     <groupId>com.celzero</groupId>
     <artifactId>firestack</artifactId>
     <version>0.1</version>
-    <packaging>pom</packaging>
+    <!-- packaging must be `aar`, not `pom`: jitpack's artifact scanner only
+         collects artifacts whose declared packaging matches a known type and
+         which exist on disk (firestack-${VERSION}.aar, copied there by the
+         jitpack.yml install phase).  With `packaging pom` it published only
+         the .pom and silently dropped the .aar. -->
+    <packaging>aar</packaging>
 
     <name>Firestack</name>
     <description> Userspace wireguard and network monitor.</description>

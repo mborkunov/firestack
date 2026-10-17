@@ -8,8 +8,10 @@ env:
   SDKVER: "37"
 before_install:
 # docs.jitpack.io/building
-  - sdk install java 17.0.14-jbr
-  - sdk use java 17.0.14-jbr
+# jitpack "latest" build image has no sdkman at all ("Init SDKMan ... Using JDK 17
+# (default for latest image)"), so `sdk` fails with command-not-found; tolerate it.
+  - sdk install java 17.0.14-jbr || true
+  - sdk use java 17.0.14-jbr || true
   - set -e
 # jitpack clones the repo as root but builds as user jitpack; git then refuses
 # to run any command in /build with "detected dubious ownership", which used to
@@ -17,36 +19,42 @@ before_install:
 # maven/gradle detector -> "ERROR: No build file found".
   - git config --global --add safe.directory /build || true
   - git config --global --add safe.directory '*' || true
-# jitpack "default" build image has no $ANDROID_HOME and no cmdline-tools
-# at /opt/android-sdk-linux/cmdline-tools/latest/bin/sdkmanager, so the
-# previous setup failed with "No such file or directory".
+# jitpack "default"/"latest" build images have no usable $ANDROID_HOME and no
+# cmdline-tools at /opt/android-sdk-linux/cmdline-tools/latest/bin/sdkmanager,
+# so the previous setup failed with "No such file or directory".
 # Install self-contained Android command-line tools into $HOME instead;
 # sdkmanager honors ANDROID_USER_HOME to relocate licenses & downloads
 # (so we never write to a system sdk dir, which isn't writeable).
-  - export ANDROID_USER_HOME="$HOME/.android"
-  - mkdir -p "$ANDROID_USER_HOME"
-  - export CLT="$HOME/clt"
-  - rm -rf "$CLT" && mkdir -p "$CLT"
-  - curl -Lso clt.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
-  - unzip -q clt.zip -d "$CLT"
-  - export SDKMGR="$CLT/cmdline-tools/bin/sdkmanager"
-  - chmod +x "$SDKMGR"
+# NOTE: each list entry is wrapped in `sh -c '...'` because a bare YAML scalar
+# that starts with a double-quote (`- "$VAR" arg`) is parsed by strict yaml
+# parsers as a quoted string followed by junk ("expected <block end>, but found
+# '<scalar>'").  Single quotes keep every $var intact for the shell.
+  - sh -c 'set -e; export ANDROID_USER_HOME="$HOME/.android"; mkdir -p "$ANDROID_USER_HOME"'
+  - sh -c 'set -e; export CLT="$HOME/clt"; rm -rf "$CLT" && mkdir -p "$CLT"'
+  - sh -c 'set -e; curl -Lso clt.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip'
+  - sh -c 'set -e; unzip -q clt.zip -d "$HOME/clt"'
+  - sh -c 'set -e; chmod +x "$HOME/clt/cmdline-tools/bin/sdkmanager"'
 # licenses must be accepted before platform/ndk installs succeed
-  - yes | "$SDKMGR" --licenses > /dev/null
+  - sh -c 'set -e; yes | "$HOME/clt/cmdline-tools/bin/sdkmanager" --licenses > /dev/null'
 # gomobile requires a real android platform + build-tools; install them under $HOME
 # developer.android.com/tools/sdkmanager
-  - "$SDKMGR" "platforms;android-${SDKVER}" "build-tools;${SDKVER}.0.0"
+  - sh -c 'set -e; "$HOME/clt/cmdline-tools/bin/sdkmanager" "platforms;android-${SDKVER}" "build-tools;${SDKVER}.0.0"'
 # default ndk is at v27; also: github.com/jitpack/jitpack.io/issues/4638
 # developer.android.com/ndk/downloads
-  - "$SDKMGR" --install "ndk;${NDKVER}"
+  - sh -c 'set -e; "$HOME/clt/cmdline-tools/bin/sdkmanager" --install "ndk;${NDKVER}"'
 # point gomobile / make-aar at our private sdk; make-aar resolves the ndk as
 # $ANDROID_HOME/ndk/$NDKVER which matches sdkmanager's default install location
-  - export ANDROID_HOME="$CLT"
-  - export ANDROID_SDK_ROOT="$CLT"
-  - export PATH="$ANDROID_HOME/platform-tools:$PATH"
-  - ./make-aar
+  - sh -c 'set -e; export ANDROID_HOME="$HOME/clt"; export ANDROID_SDK_ROOT="$HOME/clt"; export PATH="$ANDROID_HOME/platform-tools:$PATH"; test -x "$ANDROID_HOME/cmdline-tools/bin/sdkmanager"; ls "$ANDROID_HOME/ndk/$NDKVER"; ./make-aar go release; test -f "$FOUT"'
 install:
-  - ./mvn-install
+  - sh -c 'set -e; ./mvn-install'
+# jitpack only publishes artifacts it finds in ~/.m2 whose packaging matches a
+# known type AND which actually exist on disk.  mvn-install installs the .aar
+# under $GROUP/$ARTIFACT (com.github.mborkunov/firestack), but we additionally
+# copy the produced .aar / -sources.jar next to the placeholder root pom
+# (com.celzero:firestack, now <packaging>aar</packaging>) so they are picked up
+# by the "Looking for artifacts..." scan no matter which coordinates jitpack
+# prefers.
+  - sh -c 'set -eux; test -f "$FOUT"; D="$HOME/.m2/repository/com/github/${GROUP:-com.github.mborkunov}/${ARTIFACT:-firestack}/${VERSION}"; mkdir -p "$D"; cp -v "$FOUT" "$D/firestack-${VERSION}.aar"; cp -v "$FSRC" "$D/firestack-${VERSION}-sources.jar"'
 
 # cmds: jitpack.io/docs/BUILDING/#custom-commands
 # envs: jitpack.io/docs/BUILDING/#environment-variables
