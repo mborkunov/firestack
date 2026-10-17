@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <!--
+        Placeholder pom so jitpack detects a Maven build file in the repo root.
+        Without it, jitpack's "latest" build image fails with:
+        "ERROR: No build file found. Looking for Gradle/Maven/Sbt/Lein build file in the root of the project"
+        The actual artifact (firestack.aar) is produced by ./make-aar and installed
+        into the local maven repo by ./mv-install (jitpack.yml install phase),
+        which overrides this pom's coordinates at publish time.
+        DO NOT convert this into a real java build; there is none.
+    -->
+
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.celzero</groupId>
+    <artifactId>firestack</artifactId>
+    <version>0.1</version>
+    <packaging>pom</packaging>
+
+    <name>Firestack</name>
+    <description> Userspace wireguard and network monitor.</description>
+    <url>https://github.com/celzero/firestack</url>
+
+    <licenses>
+        <license>
+            <name>Mozilla Public License 2.0</name>
+            <url>https://opensource.org/license/mpl-2-0</url>
+        </license>
+    </licenses>
+
+</project>

@@ -11,6 +11,12 @@ before_install:
   - sdk install java 17.0.14-jbr
   - sdk use java 17.0.14-jbr
   - set -e
+# jitpack clones the repo as root but builds as user jitpack; git then refuses
+# to run any command in /build with "detected dubious ownership", which used to
+# make build.sh's `git describe` fail, and jitpack fall back to its default
+# maven/gradle detector -> "ERROR: No build file found".
+  - git config --global --add safe.directory /build || true
+  - git config --global --add safe.directory '*' || true
 # jitpack "default" build image has no $ANDROID_HOME and no cmdline-tools
 # at /opt/android-sdk-linux/cmdline-tools/latest/bin/sdkmanager, so the
 # previous setup failed with "No such file or directory".
