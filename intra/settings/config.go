@@ -44,6 +44,13 @@ var ExperimentalWireGuard = core.NewForeverFlow(false)
 // tunnel with randomly sized non-null packets.
 var FloodWireGuard = atomic.Bool{}
 
+// AmneziaWG is a global flag to enable AmneziaWG (DPI-resistant
+// WireGuard fork) obfuscation for tunnels which supply valid
+// Amnezia parameters (jc, jmin, jmax, s1, s2, h1..h4). When unset,
+// behaviour is 100% identical to standard WireGuard, even if the
+// config contains Amnezia keys.
+var AmneziaWG = atomic.Bool{}
+
 // EndpointIndependentMapping is a global flag to enable endpoint-independent
 // mapping for UDP as per RFC 4787.
 var EndpointIndependentMapping = atomic.Bool{}
