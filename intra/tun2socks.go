@@ -476,6 +476,79 @@ func MemProfile(rate int32, outprofile string) error {
 	return core.MemProfile(rate, outprofile)
 }
 
+// EnableAmneziaWG toggles AmneziaWG (DPI-resistant WireGuard) support
+// globally. When disabled (the default), all tunnels behave exactly like
+// standard WireGuard, even if their config carries amnezia keys
+// (jc/jmin/jmax/s1/s2/h1..h4). When enabled, only tunnels which supply
+// valid, non-zero amnezia parameters use the obfuscated transport; every
+// other tunnel continues to use vanilla WireGuard. Tunnels created before
+// the toggle are re-evaluated live; no reconnection is required.
+func EnableAmneziaWG(y bool) {
+	old := settings.AmneziaWG.Swap(y)
+	log.I("tun: amneziawg? %t / prev? %t", y, old)
+}
+
+// AmneziaWGEnabled returns whether AmneziaWG obfuscation is globally
+// enabled in firestack.
+func AmneziaWGEnabled() bool {
+	return settings.AmneziaWG.Load()
+}
+
+// AmneziaWGSuffix serializes the given Amnezia parameters into UAPI
+// formatted text ("jc=... jmin=... s1=... h1=..." etc), skipping any
+// parameter that is zero/empty. The returned string can be appended to
+// a standard WireGuard interface config (see: AddAmneziaWGTxt). Passing
+// all zeroes yields an empty string, i.e. plain WireGuard config.
+// gomobile-friendly: uses only primitive types.
+func AmneziaWGSuffix(jc, jmin, jmax, s1, s2 int32, h1, h2, h3, h4 int64) string {
+	b := strings.Builder{}
+	if jc > 0 {
+		fmt.Fprintf(&b, "jc=%d\n", jc)
+	}
+	if jmin > 0 {
+		fmt.Fprintf(&b, "jmin=%d\n", jmin)
+	}
+	if jmax > 0 {
+		fmt.Fprintf(&b, "jmax=%d\n", jmax)
+	}
+	if s1 > 0 {
+		fmt.Fprintf(&b, "s1=%d\n", s1)
+	}
+	if s2 > 0 {
+		fmt.Fprintf(&b, "s2=%d\n", s2)
+	}
+	if h1 > 0 {
+		fmt.Fprintf(&b, "h1=%d\n", h1)
+	}
+	if h2 > 0 {
+		fmt.Fprintf(&b, "h2=%d\n", h2)
+	}
+	if h3 > 0 {
+		fmt.Fprintf(&b, "h3=%d\n", h3)
+	}
+	if h4 > 0 {
+		fmt.Fprintf(&b, "h4=%d\n", h4)
+	}
+	return b.String()
+}
+
+// AddAmneziaWGTxt appends the Amnezia parameters to a UAPI formatted
+// WireGuard config txt, returning it verbatim when no parameters are
+// supplied (strict backward compatibility). The appended keys are
+// silently ignored by standard WireGuard devices; they only take effect
+// when EnableAmneziaWG(true) has been called and the values are valid.
+func AddAmneziaWGTxt(txt string, jc, jmin, jmax, s1, s2 int32, h1, h2, h3, h4 int64) string {
+	sfx := AmneziaWGSuffix(jc, jmin, jmax, s1, s2, h1, h2, h3, h4)
+	if len(sfx) <= 0 {
+		return txt
+	}
+	b := strings.Builder{}
+	b.WriteString(strings.TrimSpace(txt))
+	b.WriteString("\n")
+	b.WriteString(sfx)
+	return b.String()
+}
+
 func fname(f *os.File) string {
 	if f == nil {
 		return "<nil file>"

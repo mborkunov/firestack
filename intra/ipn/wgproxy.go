@@ -748,6 +748,10 @@ func wgIfConfigOf(id string, txtptr *string) (opts wgifopts, err error) {
 	}
 	loged(err)("proxy: wg: %s; addr: %d, dns: %d, mtu: %d, eps: %d; amnezia: %s; allowed: %d; peers: %d",
 		id, len(opts.ifaddrs), opts.dns.Len(), opts.mtu, opts.eps.Len(), opts.amnezia, len(opts.allowed), len(opts.peers))
+	if verr := opts.amnezia.Valid(); verr != nil {
+		// invalid params => Set() returns false => standard WireGuard fallback
+		log.W("proxy: wg: %s; amnezia params invalid: %v; using vanilla wireguard", id, verr)
+	}
 	return
 }
 
@@ -1002,6 +1006,16 @@ func makeWgTun(pctx context.Context, id, cfg string, ctl protect.Controller, px 
 		s.Destroy() // also closes ep via NIC removal
 		return nil, err
 	}
+
+	// re-evaluate amnezia obfuscation whenever the global toggle changes;
+	// wgconn (send/recv) reads the pointer stored on the atomic below.
+	settings.AmneziaWG.On(ctx, func(y bool) {
+		t.amnezia.Store(ifopts.amnezia) // nil-safe: Set() checks the flag itself
+		if now := ifopts.amnezia.Set(); y || now {
+			log.I("proxy: wg: %s tun: amnezia re-evaluated; enabled? %t; using? %t",
+				t.tag(), y, now)
+		}
+	})
 
 	// commence the wireguard state machine the second Device is created
 	t.events <- tun.EventUp

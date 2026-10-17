@@ -12,17 +12,16 @@ import (
 	"fmt"
 
 	"github.com/celzero/firestack/intra/log"
+	"github.com/celzero/firestack/intra/settings"
 	"golang.zx2c4.com/wireguard/device"
 )
 
 // https://github.com/amnezia-vpn/amneziawg-go/pull/2/files
 
 const (
-	// TODO: re-enable after figuring out how to account for
-	// changing the message header values for cookies mac1 & mac2
-	// here: github.com/amnezia-vpn/amneziawg-go/blob/27e661d68e/device/send.go#L167
-	disableAmenzia = true
-	sNoop          = 0 // no-op size
+	sNoop           = 0 // no-op size
+	maxJunkPktSz    = 1280
+	maxHandshakePad = 1200
 )
 
 // Jc (Junk packet count) - number of packets with random data that are sent before the start of the session
@@ -53,22 +52,71 @@ func (a *Amnezia) String() string {
 	if a == nil {
 		return "<nil>"
 	}
-	if disableAmenzia {
+	if !settings.AmneziaWG.Load() {
 		return "<disabled>"
 	}
-	if !a.Set() {
+	if !a.set() {
 		return "<unset>"
 	}
 	return fmt.Sprintf("%s: amnezia: jc(%d), jmin(%d), jmax(%d), s1(%d), s2(%d), h1(%d), h2(%d), h3(%d), h4(%d)",
 		a.id, a.Jc, a.Jmin, a.Jmax, a.S1, a.S2, a.H1, a.H2, a.H3, a.H4)
 }
 
+// Set returns true only when the AmneziaWG global flag is enabled
+// and valid Amnezia parameters have been supplied. Otherwise it
+// returns false, making the tunnel behave exactly like standard
+// WireGuard (strict backward compatibility).
 func (a *Amnezia) Set() bool {
-	if a == nil || disableAmenzia {
+	if a == nil || !settings.AmneziaWG.Load() {
 		return false
 	}
+	if err := a.Valid(); err != nil {
+		log.W("wg: %s: amnezia: invalid params: %v; falling back to wireguard", a.id, err)
+		return false
+	}
+	return a.set()
+}
 
-	return a.S1 > 0 || a.S2 > 0 || a.H1 > 0 || a.H2 > 0 || a.H3 > 0 || a.H4 > 0
+// set reports whether any amnezia-specific parameter is non-zero,
+// ignoring both the global flag and validity checks.
+func (a *Amnezia) set() bool {
+	if a == nil {
+		return false
+	}
+	return a.Jc > 0 || a.Jmin > 0 || a.Jmax > 0 ||
+		a.S1 > 0 || a.S2 > 0 || a.H1 > 0 || a.H2 > 0 || a.H3 > 0 || a.H4 > 0
+}
+
+// Valid checks the supplied Amnezia parameters for sanity, mirroring
+// the checks in github.com/amnezia-vpn/amneziawg-go device/uapi.go
+// and device/receive.go. A nil or unset Amnezia is trivially valid
+// (standard WireGuard).
+func (a *Amnezia) Valid() error {
+	if a == nil || !a.set() {
+		return nil
+	}
+	if a.Jmax < a.Jmin {
+		return fmt.Errorf("jmax(%d) < jmin(%d)", a.Jmax, a.Jmin)
+	}
+	if a.Jmin > maxJunkPktSz {
+		return fmt.Errorf("jmin(%d) > %d", a.Jmin, maxJunkPktSz)
+	}
+	if a.Jmax > maxJunkPktSz {
+		return fmt.Errorf("jmax(%d) > %d", a.Jmax, maxJunkPktSz)
+	}
+	if a.S1 > maxHandshakePad {
+		return fmt.Errorf("s1(%d) > %d", a.S1, maxHandshakePad)
+	}
+	if a.S2 > maxHandshakePad {
+		return fmt.Errorf("s2(%d) > %d", a.S2, maxHandshakePad)
+	}
+	// magic headers must not collide with the standard wg message types
+	for i, h := range []uint32{a.H1, a.H2, a.H3, a.H4} {
+		if h > 0 && h <= device.MessageTransportType {
+			return fmt.Errorf("h%d(%d) collides with a wireguard message type", i+1, h)
+		}
+	}
+	return nil
 }
 
 func (a *Amnezia) Same(b *Amnezia) bool {
