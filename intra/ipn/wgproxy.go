@@ -1007,15 +1007,14 @@ func makeWgTun(pctx context.Context, id, cfg string, ctl protect.Controller, px 
 		return nil, err
 	}
 
-	// re-evaluate amnezia obfuscation whenever the global toggle changes;
-	// wgconn (send/recv) reads the pointer stored on the atomic below.
-	settings.AmneziaWG.On(ctx, func(y bool) {
-		t.amnezia.Store(ifopts.amnezia) // nil-safe: Set() checks the flag itself
-		if now := ifopts.amnezia.Set(); y || now {
-			log.I("proxy: wg: %s tun: amnezia re-evaluated; enabled? %t; using? %t",
-				t.tag(), y, now)
-		}
-	})
+	// amnezia obfuscation is gated by settings.AmneziaWG (global toggle) and
+	// per-tunnel params (ifopts.amnezia); wgconn send/recv calls Amnezia.Set()
+	// per packet which re-evaluates both, so no change-hook registration is
+	// required here (settings.AmneziaWG is an atomic.Bool without On()).
+	t.amnezia.Store(ifopts.amnezia) // nil-safe: Set() checks the global flag
+	if now := ifopts.amnezia.Set(); now {
+		log.I("proxy: wg: %s tun: amnezia obfuscation active for this tunnel", t.tag())
+	}
 
 	// commence the wireguard state machine the second Device is created
 	t.events <- tun.EventUp
